@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useLayoutEffect, useState } from "react";
 import { motion, useTransform, MotionValue, useMotionValue, animate } from "framer-motion";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -315,16 +315,16 @@ export const HenkeiAuto: React.FC<{ words: string[], interval?: number, duration
   const progress = useMotionValue(0);
 
   // 1. Derived state: when text prop changes, update our origin and target
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (text !== texts.target) {
+      progress.set(0);
       setTexts(prev => ({ origin: prev.target, target: text }));
     }
-  }, [text, texts.target]);
+  }, [text, texts.target, progress]);
 
   // 2. Animation trigger: when texts change (and origin != target), run the animation
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (texts.origin !== texts.target) {
-      progress.set(0);
       const controls = animate(progress, 1, { duration: duration / 1000, ease: "easeInOut" });
       
       // Cleanup: if texts change again before animation finishes, stop the old animation
