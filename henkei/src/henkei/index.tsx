@@ -13,6 +13,7 @@ function cn(...inputs: ClassValue[]) {
 function useFont(url: string) {
   const [fontData, setFontData] = useState<{ font: opentype.Font | null, url: string }>({ font: null, url });
   useEffect(() => {
+    // eslint-disable-next-line
     setFontData({ font: null, url });
     fetch(url)
       .then((res) => res.arrayBuffer())
@@ -84,17 +85,20 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
         ? (() => { const val = currentEndLeft; currentEndLeft += width2; return val; })()
         : currentEndLeft - font.getAdvanceWidth(text2[text2.length - 1] || ' ', fontSize);
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const commandsToPathData = (commands: any[], decimalPlaces = 2) => {
         const round = (val: number) => Number(val.toFixed(decimalPlaces));
         let prevX = 0;
         let prevY = 0;
-        return commands.map(cmd => {
-          let s = '';
+        let s = '';
+        for (let i = 0; i < commands.length; i++) {
+          const cmd = commands[i];
           switch (cmd.type) {
             case 'M': {
+              if (i > 0) s += 'Z';
               const rx = round(cmd.x);
               const ry = round(cmd.y);
-              s = `M${rx} ${ry}`;
+              s += `M${rx} ${ry}`;
               prevX = rx; prevY = ry;
               break;
             }
@@ -102,7 +106,7 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
               const rx = round(cmd.x);
               const ry = round(cmd.y);
               if (rx !== prevX || ry !== prevY) {
-                s = `L${rx} ${ry}`;
+                s += `L${rx} ${ry}`;
                 prevX = rx; prevY = ry;
               }
               break;
@@ -112,7 +116,7 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
               const rx2 = round(cmd.x2); const ry2 = round(cmd.y2);
               const rx = round(cmd.x); const ry = round(cmd.y);
               if (rx !== prevX || ry !== prevY || rx1 !== prevX || ry1 !== prevY || rx2 !== prevX || ry2 !== prevY) {
-                s = `C${rx1} ${ry1} ${rx2} ${ry2} ${rx} ${ry}`;
+                s += `C${rx1} ${ry1} ${rx2} ${ry2} ${rx} ${ry}`;
                 prevX = rx; prevY = ry;
               }
               break;
@@ -121,20 +125,20 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
               const rx1 = round(cmd.x1); const ry1 = round(cmd.y1);
               const rx = round(cmd.x); const ry = round(cmd.y);
               if (rx !== prevX || ry !== prevY || rx1 !== prevX || ry1 !== prevY) {
-                s = `Q${rx1} ${ry1} ${rx} ${ry}`;
+                s += `Q${rx1} ${ry1} ${rx} ${ry}`;
                 prevX = rx; prevY = ry;
               }
               break;
             }
             case 'Z': 
-              s = 'Z';
-              break;
-            default: 
-              s = '';
+              s += 'Z';
               break;
           }
-          return s;
-        }).join('');
+        }
+        if (s.length > 0 && !s.endsWith('Z')) {
+          s += 'Z';
+        }
+        return s.replace(/ZZ/g, 'Z');
       };
 
       const path1 = commandsToPathData(font.getPath(c1, 0, 80, fontSize).commands);
@@ -149,7 +153,7 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
         // Bypass flubber entirely if the characters are identical (Huge CPU saver)
         morphInterpolator = () => validPath1;
       } else {
-        const cacheKey = `${fontUrl}-${fontSize}-${c1}-${c2}-v3`;
+        const cacheKey = `${fontUrl}-${fontSize}-${c1}-${c2}-v4`;
         if (interpolatorCache.has(cacheKey)) {
           // Use cached interpolator (Huge CPU saver for repeated words)
           morphInterpolator = interpolatorCache.get(cacheKey)!;
@@ -230,11 +234,11 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
 
           while (islands1.length < islands2.length) {
             const { x, y } = spawnCoord1;
-            islands1.push(`M ${x} ${y} L ${x} ${y} L ${x} ${y} Z`);
+            islands1.push(`M ${x} ${y} L ${x+0.1} ${y} L ${x} ${y+0.1} Z`);
           }
           while (islands2.length < islands1.length) {
             const { x, y } = spawnCoord2;
-            islands2.push(`M ${x} ${y} L ${x} ${y} L ${x} ${y} Z`);
+            islands2.push(`M ${x} ${y} L ${x+0.1} ${y} L ${x} ${y+0.1} Z`);
           }
 
           let interpsIslands: ((t: number) => string)[] = [];
@@ -249,15 +253,16 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
 
           while (holes1.length < holes2.length) {
             const { x, y } = spawnCoord1;
-            holes1.push(`M ${x} ${y} L ${x} ${y} L ${x} ${y} Z`);
+            holes1.push(`M ${x} ${y} L ${x+0.1} ${y} L ${x} ${y+0.1} Z`);
           }
           while (holes2.length < holes1.length) {
             const { x, y } = spawnCoord2;
-            holes2.push(`M ${x} ${y} L ${x} ${y} L ${x} ${y} Z`);
+            holes2.push(`M ${x} ${y} L ${x+0.1} ${y} L ${x} ${y+0.1} Z`);
           }
 
           let interpsHoles: ((t: number) => string)[] = [];
           if (holes1.length > 0) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             interpsHoles = (interpolateAll as any)(holes1, holes2, { maxSegmentLength: 1.5, match: false });
           }
 

@@ -3,7 +3,7 @@ import { Henkei } from "../henkei";
 
 function App() {
   // Config for Auto-Loop Mode
-  const [autoWordsStr, setAutoWordsStr] = useState("Fast,Secure,Scalable,Beautiful");
+  const [autoWordsStr, setAutoWordsStr] = useState("Edit, Me, in, Here!, 愛");
   const [autoInterval, setAutoInterval] = useState(3000);
   const [autoDuration, setAutoDuration] = useState(1000);
   const [fontUrl, setFontUrl] = useState("https://unpkg.com/@fontsource/chewy@5.0.8/files/chewy-latin-400-normal.woff");
