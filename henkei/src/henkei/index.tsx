@@ -11,21 +11,22 @@ function cn(...inputs: ClassValue[]) {
 
 // Hook to load font
 function useFont(url: string) {
-  const [font, setFont] = useState<opentype.Font | null>(null);
+  const [fontData, setFontData] = useState<{ font: opentype.Font | null, url: string }>({ font: null, url });
   useEffect(() => {
+    setFontData({ font: null, url });
     fetch(url)
       .then((res) => res.arrayBuffer())
       .then((buffer) => {
         try {
           const f = opentype.parse(buffer);
-          setFont(f);
+          setFontData({ font: f, url });
         } catch (e) {
           console.error("Error parsing font:", e);
         }
       })
       .catch((err) => console.error("Error fetching font:", err));
   }, [url]);
-  return font;
+  return fontData;
 }
 
 export interface HenkeiProps {
@@ -48,18 +49,17 @@ export interface HenkeiCharItem {
 const interpolatorCache = new Map<string, (v: number) => string>();
 
 export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, className, fontUrl }) => {
-  const font = useFont(fontUrl);
+  const fontData = useFont(fontUrl);
   const maxLength = Math.max(text1.length, text2.length, 1);
 
   // Calculate characters and their morph paths with useMemo to prevent freezing
   const charactersData = React.useMemo(() => {
+    if (!fontData.font || fontData.url !== fontUrl) return { chars: [], currentStartLeft: 0, currentEndLeft: 0 };
+    const font = fontData.font;
+
     const chars: HenkeiCharItem[] = [];
     let currentStartLeft = 0;
     let currentEndLeft = 0;
-
-    if (!font) {
-      return { chars, currentStartLeft, currentEndLeft };
-    }
 
     const fontSize = 100;
 
@@ -84,8 +84,61 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
         ? (() => { const val = currentEndLeft; currentEndLeft += width2; return val; })()
         : currentEndLeft - font.getAdvanceWidth(text2[text2.length - 1] || ' ', fontSize);
 
-      const path1 = font.getPath(c1, 0, 80, fontSize).toPathData(2);
-      const path2 = font.getPath(c2, 0, 80, fontSize).toPathData(2);
+      const commandsToPathData = (commands: any[], decimalPlaces = 2) => {
+        const round = (val: number) => Number(val.toFixed(decimalPlaces));
+        let prevX = 0;
+        let prevY = 0;
+        return commands.map(cmd => {
+          let s = '';
+          switch (cmd.type) {
+            case 'M': {
+              const rx = round(cmd.x);
+              const ry = round(cmd.y);
+              s = `M${rx} ${ry}`;
+              prevX = rx; prevY = ry;
+              break;
+            }
+            case 'L': {
+              const rx = round(cmd.x);
+              const ry = round(cmd.y);
+              if (rx !== prevX || ry !== prevY) {
+                s = `L${rx} ${ry}`;
+                prevX = rx; prevY = ry;
+              }
+              break;
+            }
+            case 'C': {
+              const rx1 = round(cmd.x1); const ry1 = round(cmd.y1);
+              const rx2 = round(cmd.x2); const ry2 = round(cmd.y2);
+              const rx = round(cmd.x); const ry = round(cmd.y);
+              if (rx !== prevX || ry !== prevY || rx1 !== prevX || ry1 !== prevY || rx2 !== prevX || ry2 !== prevY) {
+                s = `C${rx1} ${ry1} ${rx2} ${ry2} ${rx} ${ry}`;
+                prevX = rx; prevY = ry;
+              }
+              break;
+            }
+            case 'Q': {
+              const rx1 = round(cmd.x1); const ry1 = round(cmd.y1);
+              const rx = round(cmd.x); const ry = round(cmd.y);
+              if (rx !== prevX || ry !== prevY || rx1 !== prevX || ry1 !== prevY) {
+                s = `Q${rx1} ${ry1} ${rx} ${ry}`;
+                prevX = rx; prevY = ry;
+              }
+              break;
+            }
+            case 'Z': 
+              s = 'Z';
+              break;
+            default: 
+              s = '';
+              break;
+          }
+          return s;
+        }).join('');
+      };
+
+      const path1 = commandsToPathData(font.getPath(c1, 0, 80, fontSize).commands);
+      const path2 = commandsToPathData(font.getPath(c2, 0, 80, fontSize).commands);
 
       const validPath1 = path1 || "M 50 40 L 50.1 40 L 50.1 40.1 L 50 40.1 Z";
       const validPath2 = path2 || "M 50 40 L 50.1 40 L 50.1 40.1 L 50 40.1 Z";
@@ -96,7 +149,7 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
         // Bypass flubber entirely if the characters are identical (Huge CPU saver)
         morphInterpolator = () => validPath1;
       } else {
-        const cacheKey = `${c1}-${c2}`;
+        const cacheKey = `${fontUrl}-${fontSize}-${c1}-${c2}-v3`;
         if (interpolatorCache.has(cacheKey)) {
           // Use cached interpolator (Huge CPU saver for repeated words)
           morphInterpolator = interpolatorCache.get(cacheKey)!;
@@ -147,6 +200,23 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
           const { islands: islands1, holes: holes1 } = classifyRings(paths1);
           const { islands: islands2, holes: holes2 } = classifyRings(paths2);
 
+          const getCenter = (pathStr: string) => {
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            const matches = pathStr.matchAll(/([0-9.-]+)[,\s]+([0-9.-]+)/g);
+            let found = false;
+            for (const match of matches) {
+              found = true;
+              const x = parseFloat(match[1]);
+              const y = parseFloat(match[2]);
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            }
+            if (!found) return { x: 50, y: 50 };
+            return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+          };
+
           const getFirstCoord = (pathStr: string) => {
             const match = pathStr.match(/M\s*([0-9.-]+)[,\s]+([0-9.-]+)/);
             return match ? { x: parseFloat(match[1]), y: parseFloat(match[2]) } : { x: 50, y: 50 };
@@ -155,7 +225,7 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
           // --- ISLANDS INTERPOLATION (Cell Division Logic to avoid slicing) ---
 
           // Find the origin coordinates for new islands to sprout from or shrink into
-          const spawnCoord1 = islands1.length > 0 ? getFirstCoord(islands1[0]) : { x: 50, y: 50 };
+          const spawnCoord1 = islands1.length > 0 ? getCenter(islands1[0]) : { x: 50, y: 50 };
           const spawnCoord2 = islands2.length > 0 ? getFirstCoord(islands2[0]) : { x: 50, y: 50 };
 
           while (islands1.length < islands2.length) {
@@ -169,6 +239,7 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
 
           let interpsIslands: ((t: number) => string)[] = [];
           if (islands1.length > 0) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             interpsIslands = (interpolateAll as any)(islands1, islands2, { maxSegmentLength: 1.5, match: false });
           }
 
@@ -177,13 +248,11 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
           const originalHolesLength2 = holes2.length;
 
           while (holes1.length < holes2.length) {
-            const targetRing = holes2[holes1.length];
-            const { x, y } = getFirstCoord(targetRing);
+            const { x, y } = spawnCoord1;
             holes1.push(`M ${x} ${y} L ${x} ${y} L ${x} ${y} Z`);
           }
           while (holes2.length < holes1.length) {
-            const originRing = holes1[holes2.length];
-            const { x, y } = getFirstCoord(originRing);
+            const { x, y } = spawnCoord2;
             holes2.push(`M ${x} ${y} L ${x} ${y} L ${x} ${y} Z`);
           }
 
@@ -221,9 +290,9 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
     }
 
     return { chars, currentStartLeft, currentEndLeft };
-  }, [text1, text2, font, maxLength]);
+  }, [text1, text2, fontData.font, fontData.url, maxLength, fontUrl]);
 
-  if (!font) {
+  if (!fontData.font || fontData.url !== fontUrl) {
     return <div className="text-2xl text-gray-400 font-bold tracking-widest animate-pulse">Loading Font...</div>;
   }
 
@@ -296,7 +365,7 @@ const HenkeiCharacter: React.FC<{ item: HenkeiCharItem; progress: MotionValue<nu
   );
 };
 
-export const HenkeiAuto: React.FC<{ words: string[], interval?: number, duration?: number, className?: string, fontUrl?: string }> = ({ words, interval = 3000, duration = 1000, className, fontUrl = "/Chewy-Regular.ttf" }) => {
+export const Henkei: React.FC<{ words: string[], interval?: number, duration?: number, className?: string, fontUrl?: string }> = ({ words, interval = 3000, duration = 1000, className, fontUrl = "/Chewy-Regular.ttf" }) => {
   const [index, setIndex] = useState(0);
 
   // Cycle through words based on the interval

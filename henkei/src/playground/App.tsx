@@ -1,12 +1,12 @@
 import { useState, useDeferredValue } from "react";
-import { HenkeiAuto } from "../henkei";
+import { Henkei } from "../henkei";
 
 function App() {
   // Config for Auto-Loop Mode
   const [autoWordsStr, setAutoWordsStr] = useState("Fast,Secure,Scalable,Beautiful");
   const [autoInterval, setAutoInterval] = useState(3000);
   const [autoDuration, setAutoDuration] = useState(1000);
-  const [fontUrl, setFontUrl] = useState("/Chewy-Regular.ttf");
+  const [fontUrl, setFontUrl] = useState("https://unpkg.com/@fontsource/chewy@5.0.8/files/chewy-latin-400-normal.woff");
   const [fontSize, setFontSize] = useState(120);
 
   const deferredInterval = useDeferredValue(autoInterval);
@@ -104,7 +104,7 @@ function App() {
 
         {/* Render area */}
         <div className="flex-1 flex items-center justify-center p-8 relative" style={{ fontSize: `${fontSize}px` }}>
-          <HenkeiAuto
+          <Henkei
             words={autoWords}
             interval={deferredInterval}
             duration={deferredDuration}
