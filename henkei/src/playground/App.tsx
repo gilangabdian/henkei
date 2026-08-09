@@ -1,5 +1,5 @@
 import { useState, useDeferredValue } from "react";
-import { HenkeiAuto } from "./Henkei/Henkei";
+import { HenkeiAuto } from "../henkei";
 
 function App() {
   // Config for Auto-Loop Mode
