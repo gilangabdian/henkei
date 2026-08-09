@@ -3,6 +3,7 @@ import { motion, useTransform, MotionValue, useMotionValue, animate } from "fram
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import opentype from "opentype.js";
+import polygonClipping from "polygon-clipping";
 import { interpolateAll, splitPathString } from "flubber";
 
 function cn(...inputs: ClassValue[]) {
@@ -144,8 +145,75 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
       const path1 = commandsToPathData(font.getPath(c1, 0, 80, fontSize).commands);
       const path2 = commandsToPathData(font.getPath(c2, 0, 80, fontSize).commands);
 
-      const validPath1 = path1 || "M 50 40 L 50.1 40 L 50.1 40.1 L 50 40.1 Z";
-      const validPath2 = path2 || "M 50 40 L 50.1 40 L 50.1 40.1 L 50 40.1 Z";
+      const unionPolygons = (pathsStr: string) => {
+        let currentPoly: number[][] = [];
+        const polygons: number[][][][] = [];
+        let startX = 0, startY = 0;
+        let prevX = 0, prevY = 0;
+
+        const cmdRegex = /([MLCQZ])([^MLCQZ]*)/ig;
+        let match;
+        while ((match = cmdRegex.exec(pathsStr)) !== null) {
+            const type = match[1].toUpperCase();
+            if (type === 'Z') {
+                if (currentPoly.length > 0) polygons.push([[...currentPoly]]);
+                currentPoly = [];
+                continue;
+            }
+            const argsStr = match[2].trim();
+            if (!argsStr) continue;
+            const nums = argsStr.split(/[\s,]+/).map(parseFloat).filter(n => !isNaN(n));
+
+            if (type === 'M') {
+                if (currentPoly.length > 0) polygons.push([[...currentPoly]]);
+                currentPoly = [];
+                if (nums.length >= 2) { prevX = nums[0]; prevY = nums[1]; startX = prevX; startY = prevY; currentPoly.push([prevX, prevY]); }
+            } else if (type === 'L') {
+                if (nums.length >= 2) { prevX = nums[0]; prevY = nums[1]; currentPoly.push([prevX, prevY]); }
+            } else if (type === 'Q') {
+                if (nums.length >= 4) {
+                    for (let i = 1; i <= 5; i++) {
+                        const t = i / 5; const mt = 1 - t;
+                        currentPoly.push([mt * mt * prevX + 2 * mt * t * nums[0] + t * t * nums[2], mt * mt * prevY + 2 * mt * t * nums[1] + t * t * nums[3]]);
+                    }
+                    prevX = nums[2]; prevY = nums[3];
+                }
+            } else if (type === 'C') {
+                if (nums.length >= 6) {
+                    for (let i = 1; i <= 5; i++) {
+                        const t = i / 5; const mt = 1 - t;
+                        currentPoly.push([mt * mt * mt * prevX + 3 * mt * mt * t * nums[0] + 3 * mt * t * t * nums[2] + t * t * t * nums[4], mt * mt * mt * prevY + 3 * mt * mt * t * nums[1] + 3 * mt * t * t * nums[3] + t * t * t * nums[5]]);
+                    }
+                    prevX = nums[4]; prevY = nums[5];
+                }
+            }
+        }
+        if (currentPoly.length > 0) polygons.push([[...currentPoly]]);
+
+        if (polygons.length === 0) return pathsStr;
+
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const unioned = (polygonClipping.union as any)(...polygons);
+            let outStr = '';
+            for (const multi of unioned) {
+                for (const ring of multi) {
+                    if (ring.length === 0) continue;
+                    outStr += `M ${Number(ring[0][0].toFixed(2))} ${Number(ring[0][1].toFixed(2))} `;
+                    for (let i = 1; i < ring.length; i++) {
+                        outStr += `L ${Number(ring[i][0].toFixed(2))} ${Number(ring[i][1].toFixed(2))} `;
+                    }
+                    outStr += 'Z ';
+                }
+            }
+            return outStr;
+        } catch (e) {
+            return pathsStr;
+        }
+      };
+
+      const validPath1 = unionPolygons(path1 || "M 50 40 L 50.1 40 L 50.1 40.1 L 50 40.1 Z");
+      const validPath2 = unionPolygons(path2 || "M 50 40 L 50.1 40 L 50.1 40.1 L 50 40.1 Z");
 
       let morphInterpolator: (v: number) => string;
 
@@ -153,7 +221,7 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
         // Bypass flubber entirely if the characters are identical (Huge CPU saver)
         morphInterpolator = () => validPath1;
       } else {
-        const cacheKey = `${fontUrl}-${fontSize}-${c1}-${c2}-v4`;
+        const cacheKey = `${fontUrl}-${fontSize}-${c1}-${c2}-v7`;
         if (interpolatorCache.has(cacheKey)) {
           // Use cached interpolator (Huge CPU saver for repeated words)
           morphInterpolator = interpolatorCache.get(cacheKey)!;
@@ -163,22 +231,51 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
           const paths2 = splitPathString(validPath2);
 
           const getSignedArea = (pathStr: string) => {
-            const coords: number[][] = [];
-            const regex = /([0-9.-]+)[,\s]+([0-9.-]+)/g;
-            let match;
-            while ((match = regex.exec(pathStr)) !== null) {
-              coords.push([parseFloat(match[1]), parseFloat(match[2])]);
-            }
             let area = 0;
+            const cmdRegex = /([MLCQZ])([^MLCQZ]*)/ig;
+            let match;
+            const coords: number[][] = [];
+            while ((match = cmdRegex.exec(pathStr)) !== null) {
+              const type = match[1].toUpperCase();
+              if (type === 'Z') continue;
+              const argsStr = match[2].trim();
+              if (!argsStr) continue;
+              const nums = argsStr.split(/[\s,]+/).map(parseFloat).filter(n => !isNaN(n));
+              if (type === 'M' || type === 'L') {
+                if (nums.length >= 2) coords.push([nums[0], nums[1]]);
+              } else if (type === 'Q') {
+                if (nums.length >= 4) coords.push([nums[2], nums[3]]);
+              } else if (type === 'C') {
+                if (nums.length >= 6) coords.push([nums[4], nums[5]]);
+              }
+            }
             for (let j = 0; j < coords.length - 1; j++) {
               area += coords[j][0] * coords[j + 1][1] - coords[j + 1][0] * coords[j][1];
             }
+            if (coords.length > 0) {
+              area += coords[coords.length - 1][0] * coords[0][1] - coords[0][0] * coords[coords.length - 1][1];
+            }
             return area / 2;
+          };
+
+          const getBounds = (pathStr: string) => {
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            const matches = pathStr.matchAll(/([0-9.-]+)[,\s]+([0-9.-]+)/g);
+            for (const match of matches) {
+              const x = parseFloat(match[1]);
+              const y = parseFloat(match[2]);
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            }
+            return { minX, maxX, minY, maxY };
           };
 
           const classifyRings = (paths: string[]) => {
             if (paths.length === 0) return { islands: [], holes: [] };
             const areas = paths.map(getSignedArea);
+            const bounds = paths.map(getBounds);
 
             let maxAbsArea = -1;
             let islandSign = 1;
@@ -189,15 +286,44 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
               }
             });
 
-            const islands: string[] = [];
-            const holes: string[] = [];
+            const potentialIslands: string[] = [];
+            const potentialHoles: string[] = [];
+            const islandBoundsList: any[] = [];
+            
             paths.forEach((p, idx) => {
               if (Math.sign(areas[idx]) === islandSign || Math.sign(areas[idx]) === 0) {
-                islands.push(p);
+                potentialIslands.push(p);
+                islandBoundsList.push(bounds[idx]);
               } else {
-                holes.push(p);
+                potentialHoles.push(p);
               }
             });
+
+            const islands = [...potentialIslands];
+            const holes: string[] = [];
+
+            // A true hole MUST be geometrically contained within the bounding box of an island.
+            // If it's an overlapping Kanji stroke with a weird winding sign, it will likely extend outside.
+            potentialHoles.forEach((pHole) => {
+              const hb = bounds[paths.indexOf(pHole)];
+              let isInside = false;
+              for (const ib of islandBoundsList) {
+                // Allow a small 0.5px margin for rounding errors
+                if (hb.minX >= ib.minX - 0.5 && hb.maxX <= ib.maxX + 0.5 &&
+                    hb.minY >= ib.minY - 0.5 && hb.maxY <= ib.maxY + 0.5) {
+                  isInside = true;
+                  break;
+                }
+              }
+
+              if (isInside) {
+                holes.push(pHole);
+              } else {
+                // Not contained in any island? It's just a misclassified stroke!
+                islands.push(pHole);
+              }
+            });
+
             return { islands, holes };
           };
 
