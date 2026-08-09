@@ -6,9 +6,12 @@ function App() {
   const [autoWordsStr, setAutoWordsStr] = useState("Fast,Secure,Scalable,Beautiful");
   const [autoInterval, setAutoInterval] = useState(3000);
   const [autoDuration, setAutoDuration] = useState(1000);
+  const [fontUrl, setFontUrl] = useState("/Chewy-Regular.ttf");
+  const [fontSize, setFontSize] = useState(120);
 
   const deferredInterval = useDeferredValue(autoInterval);
   const deferredDuration = useDeferredValue(autoDuration);
+  const deferredFontUrl = useDeferredValue(fontUrl);
 
   const autoWords = autoWordsStr
     .split(",")
@@ -36,6 +39,32 @@ function App() {
             onChange={(e) => setAutoWordsStr(e.target.value)}
             className="w-full bg-white/30 border border-white/40 rounded-md px-2 py-1 text-[11px] focus:outline-none focus:border-[#8A7D63] transition-all text-[#6B5E44]"
           />
+        </div>
+
+        <div className="flex gap-4">
+          <div className="flex-1">
+            <label className="text-[9px] font-bold uppercase text-[#A6997B] block mb-1">Font URL (.ttf)</label>
+            <input
+              type="text"
+              value={fontUrl}
+              onChange={(e) => setFontUrl(e.target.value)}
+              className="w-full bg-white/30 border border-white/40 rounded-md px-2 py-1 text-[10px] focus:outline-none focus:border-[#8A7D63] transition-all text-[#6B5E44]"
+            />
+          </div>
+          <div className="flex-1">
+            <label className="text-[9px] font-bold uppercase text-[#A6997B] flex justify-between mb-1">
+              <span>Size</span> <span>{fontSize}px</span>
+            </label>
+            <input
+              type="range"
+              min="20"
+              max="200"
+              step="1"
+              value={fontSize}
+              onChange={(e) => setFontSize(Number(e.target.value))}
+              className="w-full accent-[#8A7D63] h-1 bg-[#E5D0AC] rounded-full appearance-none cursor-pointer mt-1"
+            />
+          </div>
         </div>
 
         <div className="flex gap-4">
@@ -76,11 +105,12 @@ function App() {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-white/60 rounded-full blur-[100px] pointer-events-none" />
 
         {/* Render area */}
-        <div className="flex-1 flex items-center justify-center p-8 relative">
+        <div className="flex-1 flex items-center justify-center p-8 relative" style={{ fontSize: `${fontSize}px` }}>
           <HenkeiAuto
             words={autoWords}
             interval={deferredInterval}
             duration={deferredDuration}
+            fontUrl={deferredFontUrl}
             className="text-black z-10"
           />
         </div>

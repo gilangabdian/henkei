@@ -33,12 +33,13 @@ export interface HenkeiProps {
   text2: string;
   progress: MotionValue<number>;
   className?: string;
+  fontUrl: string;
 }
 
 const interpolatorCache = new Map<string, (v: number) => string>();
 
-export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, className }) => {
-  const font = useFont("/Chewy-Regular.ttf");
+export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, className, fontUrl }) => {
+  const font = useFont(fontUrl);
   const maxLength = Math.max(text1.length, text2.length, 1);
 
   // Calculate characters and their morph paths with useMemo to prevent freezing
@@ -238,11 +239,11 @@ const HenkeiContainer = ({ progress, startWidth, endWidth, children }: { progres
 
   const containerWidth = useTransform(progress, (v: number) => {
     const { startWidth: s, endWidth: e } = widths.current;
-    return s + (e - s) * v;
+    return `${(s + (e - s) * v) / 100}em`;
   });
 
   return (
-    <motion.div className="relative h-[100px]" style={{ width: containerWidth }}>
+    <motion.div className="relative inline-flex items-center justify-center" style={{ width: containerWidth, height: "1em" }}>
       {children}
     </motion.div>
   );
@@ -264,10 +265,10 @@ const HenkeiCharacter: React.FC<{ item: HenkeiCharItem; progress: MotionValue<nu
     itemRef.current = item;
   }, [item]);
 
-  // Smoothly interpolate the absolute X position manually to avoid stale array dependencies
+  // Smoothly interpolate the absolute X position as an em string to scale natively with CSS font-size
   const x = useTransform(progress, (v: number) => {
     const cur = itemRef.current;
-    return cur.startLeft + (cur.endLeft - cur.startLeft) * v;
+    return `${(cur.startLeft + (cur.endLeft - cur.startLeft) * v) / 100}em`;
   });
 
   // Interpolate the SVG Path d attribute reading from the latest ref
@@ -284,17 +285,17 @@ const HenkeiCharacter: React.FC<{ item: HenkeiCharItem; progress: MotionValue<nu
     <motion.div
       className="absolute top-0 overflow-visible"
       style={{
-        x, // framer-motion physical translation
-        height: 100,
+        left: x,
+        height: "1em",
       }}>
-      <svg className="absolute top-0 left-0 overflow-visible pointer-events-none" width="100" height="100">
+      <svg className="absolute top-0 left-0 overflow-visible pointer-events-none" height="1em" viewBox="0 0 100 100">
         <motion.path d={morphPath} fill="currentColor" fillRule="evenodd" clipRule="evenodd" />
       </svg>
     </motion.div>
   );
 };
 
-export const HenkeiAuto: React.FC<{ words: string[], interval?: number, duration?: number, className?: string }> = ({ words, interval = 3000, duration = 1000, className }) => {
+export const HenkeiAuto: React.FC<{ words: string[], interval?: number, duration?: number, className?: string, fontUrl?: string }> = ({ words, interval = 3000, duration = 1000, className, fontUrl = "/Chewy-Regular.ttf" }) => {
   const [index, setIndex] = useState(0);
 
   // Cycle through words based on the interval
@@ -330,6 +331,6 @@ export const HenkeiAuto: React.FC<{ words: string[], interval?: number, duration
     }
   }, [texts, progress, duration]);
 
-  return <HenkeiCore text1={texts.origin} text2={texts.target} progress={progress} className={className} />;
+  return <HenkeiCore text1={texts.origin} text2={texts.target} progress={progress} className={className} fontUrl={fontUrl} />;
 };
 
