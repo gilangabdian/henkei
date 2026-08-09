@@ -230,13 +230,13 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
   );
 };
 
-const HenkeiContainer = ({ progress, startWidth, endWidth, children }: any) => {
+const HenkeiContainer = ({ progress, startWidth, endWidth, children }: { progress: MotionValue<number>, startWidth: number, endWidth: number, children: React.ReactNode }) => {
   const widths = React.useRef({ startWidth, endWidth });
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     widths.current = { startWidth, endWidth };
   }, [startWidth, endWidth]);
 
-  const containerWidth = useTransform(progress, (v: any) => {
+  const containerWidth = useTransform(progress, (v: number) => {
     const { startWidth: s, endWidth: e } = widths.current;
     return s + (e - s) * v;
   });
@@ -260,18 +260,18 @@ interface HenkeiCharItem {
 const HenkeiCharacter: React.FC<{ item: HenkeiCharItem; progress: MotionValue<number> }> = ({ item, progress }) => {
   // Store the latest item in a ref to avoid stale closures in useTransform
   const itemRef = React.useRef(item);
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     itemRef.current = item;
   }, [item]);
 
   // Smoothly interpolate the absolute X position manually to avoid stale array dependencies
-  const x = useTransform(progress, (v: any) => {
+  const x = useTransform(progress, (v: number) => {
     const cur = itemRef.current;
     return cur.startLeft + (cur.endLeft - cur.startLeft) * v;
   });
 
   // Interpolate the SVG Path d attribute reading from the latest ref
-  const morphPath = useTransform(progress, (v: any) => {
+  const morphPath = useTransform(progress, (v: number) => {
     try {
       return itemRef.current.morphInterpolator(v);
     } catch (e) {
@@ -314,17 +314,15 @@ export const HenkeiAuto: React.FC<{ words: string[], interval?: number, duration
   const [texts, setTexts] = useState({ origin: text, target: text });
   const progress = useMotionValue(0);
 
-  // 1. Derived state: when text prop changes, update our origin and target
-  useLayoutEffect(() => {
-    if (text !== texts.target) {
-      progress.set(0);
-      setTexts(prev => ({ origin: prev.target, target: text }));
-    }
-  }, [text, texts.target, progress]);
+  // 1. Derived state: when text prop changes, update our origin and target synchronously during render (React best practice)
+  if (text !== texts.target) {
+    setTexts({ origin: texts.target, target: text });
+  }
 
   // 2. Animation trigger: when texts change (and origin != target), run the animation
   useLayoutEffect(() => {
     if (texts.origin !== texts.target) {
+      progress.set(0); // Child refs are already updated by this point, so progress 0 computes perfectly
       const controls = animate(progress, 1, { duration: duration / 1000, ease: "easeInOut" });
       
       // Cleanup: if texts change again before animation finishes, stop the old animation
