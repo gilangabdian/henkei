@@ -1,85 +1,88 @@
 import { useState, useDeferredValue } from "react";
-import { useSpring, useMotionValue } from "framer-motion";
-import { Henkei } from "./Henkei/Henkei";
+import { HenkeiAuto } from "./Henkei/Henkei";
 
 function App() {
-  const [text1, setText1] = useState("Halo");
-  const [text2, setText2] = useState("Hello bro");
+  // Config for Auto-Loop Mode
+  const [autoWordsStr, setAutoWordsStr] = useState("Fast,Secure,Scalable,Beautiful");
+  const [autoInterval, setAutoInterval] = useState(3000);
+  const [autoDuration, setAutoDuration] = useState(1000);
 
-  // Defer the text updates passed to the heavy Henkei component 
-  // so that the input fields never lag while typing!
-  const deferredText1 = useDeferredValue(text1);
-  const deferredText2 = useDeferredValue(text2);
+  const deferredInterval = useDeferredValue(autoInterval);
+  const deferredDuration = useDeferredValue(autoDuration);
 
-  // We use a framer-motion MotionValue to hold the progress
-  const progressValue = useMotionValue(0);
-
-  // Apply spring physics for smooth "elastic" transitions even if user drags quickly
-  const smoothProgress = useSpring(progressValue, {
-    stiffness: 100,
-    damping: 15,
-    mass: 1,
-  });
-
-  const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // value is from 0 to 100, we convert it to 0.0 - 1.0
-    const val = parseFloat(e.target.value) / 100;
-    progressValue.set(val);
-  };
+  const autoWords = autoWordsStr
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
 
   return (
-    <div className="flex h-screen w-full bg-[#FEF9E1] text-black font-sans overflow-hidden">
-      {/* KIRI - Input Form (Mulus tanpa garis pembatas) */}
-      <div className="w-[30%] lg:w-[350px] h-full flex flex-col justify-center px-10 lg:px-16 z-10 relative">
-        <h1 className="text-6xl font-chewy mb-16 tracking-wide">Henkei</h1>
+    <div className="min-h-screen w-full bg-[#FEF9E1] text-black font-sans p-8 flex flex-col items-center justify-center">
+      <div className="w-full max-w-5xl flex flex-col items-center mb-12">
+        <h1 className="text-7xl font-chewy mb-6 tracking-wide text-center">Henkei</h1>
+        <p className="text-[#A6997B] font-medium max-w-2xl text-center text-lg">
+          A React component that can be used to transform text with animation.
+        </p>
+      </div>
 
-        <div className="space-y-12">
-          <div className="space-y-3">
-            <label className="text-xs font-bold uppercase tracking-[0.2em] text-[#A6997B]">Origin Text</label>
+      {/* Floating Config Panel at Top Right */}
+      <div className="fixed top-4 right-4 z-50 bg-white/20 backdrop-blur-md border border-white/30 p-3 rounded-xl shadow-sm w-72 space-y-3">
+        <h3 className="text-[10px] font-bold tracking-widest text-[#8A7D63]">Attributes</h3>
+
+        <div>
+          <label className="text-[9px] font-bold uppercase text-[#A6997B] block mb-1">Words (comma separated)</label>
+          <input
+            type="text"
+            value={autoWordsStr}
+            onChange={(e) => setAutoWordsStr(e.target.value)}
+            className="w-full bg-white/30 border border-white/40 rounded-md px-2 py-1 text-[11px] focus:outline-none focus:border-[#8A7D63] transition-all text-[#6B5E44]"
+          />
+        </div>
+
+        <div className="flex gap-4">
+          <div className="flex-1">
+            <label className="text-[9px] font-bold uppercase text-[#A6997B] flex justify-between mb-1">
+              <span>Delay</span> <span>{autoInterval}ms</span>
+            </label>
             <input
-              type="text"
-              value={text1}
-              onChange={(e) => setText1(e.target.value)}
-              className="w-full bg-transparent border-b-2 border-[#E5D0AC] px-0 py-2 text-2xl font-bold focus:outline-none focus:border-black transition-all"
-              placeholder="e.g. Halo"
+              type="range"
+              min="1000"
+              max="5000"
+              step="100"
+              value={autoInterval}
+              onChange={(e) => setAutoInterval(Number(e.target.value))}
+              className="w-full accent-[#8A7D63] h-1 bg-[#E5D0AC] rounded-full appearance-none cursor-pointer"
             />
           </div>
 
-          <div className="space-y-3">
-            <label className="text-xs font-bold uppercase tracking-[0.2em] text-[#A6997B]">Target Text</label>
+          <div className="flex-1">
+            <label className="text-[9px] font-bold uppercase text-[#A6997B] flex justify-between mb-1">
+              <span>Morph</span> <span>{autoDuration}ms</span>
+            </label>
             <input
-              type="text"
-              value={text2}
-              onChange={(e) => setText2(e.target.value)}
-              className="w-full bg-transparent border-b-2 border-[#E5D0AC] px-0 py-2 text-2xl font-bold focus:outline-none focus:border-black transition-all"
-              placeholder="e.g. Hello bro"
+              type="range"
+              min="200"
+              max="3000"
+              step="100"
+              value={autoDuration}
+              onChange={(e) => setAutoDuration(Number(e.target.value))}
+              className="w-full accent-[#8A7D63] h-1 bg-[#E5D0AC] rounded-full appearance-none cursor-pointer"
             />
           </div>
         </div>
       </div>
 
-      {/* KANAN - Teks Henkei & Slider di bawahnya */}
-      <div className="flex-1 h-full flex flex-col relative overflow-hidden">
-        {/* Soft background glow */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-[#E5D0AC]/50 rounded-full blur-[120px] pointer-events-none" />
+      <div className="w-full max-w-4xl relative rounded-3xl bg-[#F5E6CD] shadow-2xl overflow-hidden flex flex-col border border-[#E5D0AC]/50 min-h-[500px]">
+        {/* Glow */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-white/60 rounded-full blur-[100px] pointer-events-none" />
 
-        {/* Area Teks Morphing (Di tengah) */}
-        <div className="flex-1 flex items-center justify-center z-10">
-          <Henkei text1={deferredText1} text2={deferredText2} progress={smoothProgress} className="text-black" />
-        </div>
-
-        {/* Area Slider (Di bawah) */}
-        <div className="w-full flex justify-center pb-16 z-10">
-          <div className="w-full max-w-xl px-8 flex flex-col items-center">
-            <input
-              type="range"
-              min="0"
-              max="100"
-              defaultValue="0"
-              onChange={handleSliderChange}
-              className="w-full accent-black h-3 bg-[#E5D0AC] rounded-full appearance-none cursor-pointer"
-            />
-          </div>
+        {/* Render area */}
+        <div className="flex-1 flex items-center justify-center p-8 relative">
+          <HenkeiAuto
+            words={autoWords}
+            interval={deferredInterval}
+            duration={deferredDuration}
+            className="text-black z-10"
+          />
         </div>
       </div>
     </div>

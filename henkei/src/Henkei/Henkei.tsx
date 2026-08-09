@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { motion, useTransform, MotionValue } from "framer-motion";
+import { motion, useTransform, MotionValue, useMotionValue, animate } from "framer-motion";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import opentype from "opentype.js";
-import { interpolateAll, splitPathString, separate, combine } from "flubber";
+import { interpolateAll, splitPathString } from "flubber";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -28,14 +28,16 @@ function useFont(url: string) {
   return font;
 }
 
-interface HenkeiProps {
+export interface HenkeiProps {
   text1: string;
   text2: string;
   progress: MotionValue<number>;
   className?: string;
 }
 
-export const Henkei: React.FC<HenkeiProps> = ({ text1, text2, progress, className }) => {
+const interpolatorCache = new Map<string, (v: number) => string>();
+
+export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, className }) => {
   const font = useFont("/Chewy-Regular.ttf");
   const maxLength = Math.max(text1.length, text2.length, 1);
 
@@ -78,120 +80,125 @@ export const Henkei: React.FC<HenkeiProps> = ({ text1, text2, progress, classNam
       const validPath1 = path1 || "M 50 40 L 50.1 40 L 50.1 40.1 L 50 40.1 Z";
       const validPath2 = path2 || "M 50 40 L 50.1 40 L 50.1 40.1 L 50 40.1 Z";
 
-      const paths1 = splitPathString(validPath1);
-      const paths2 = splitPathString(validPath2);
+      let morphInterpolator: (v: number) => string;
 
-      const getSignedArea = (pathStr: string) => {
-        const coords: number[][] = [];
-        const regex = /([0-9.-]+)[,\s]+([0-9.-]+)/g;
-        let match;
-        while ((match = regex.exec(pathStr)) !== null) {
-          coords.push([parseFloat(match[1]), parseFloat(match[2])]);
-        }
-        let area = 0;
-        for (let j = 0; j < coords.length - 1; j++) {
-          area += coords[j][0] * coords[j + 1][1] - coords[j + 1][0] * coords[j][1];
-        }
-        return area / 2;
-      };
-
-      const classifyRings = (paths: string[]) => {
-        if (paths.length === 0) return { islands: [], holes: [] };
-        const areas = paths.map(getSignedArea);
-
-        let maxAbsArea = -1;
-        let islandSign = 1;
-        areas.forEach((a) => {
-          if (Math.abs(a) > maxAbsArea) {
-            maxAbsArea = Math.abs(a);
-            islandSign = Math.sign(a) || 1;
-          }
-        });
-
-        const islands: string[] = [];
-        const holes: string[] = [];
-        paths.forEach((p, idx) => {
-          if (Math.sign(areas[idx]) === islandSign || Math.sign(areas[idx]) === 0) {
-            islands.push(p);
-          } else {
-            holes.push(p);
-          }
-        });
-        return { islands, holes };
-      };
-
-      const { islands: islands1, holes: holes1 } = classifyRings(paths1);
-      const { islands: islands2, holes: holes2 } = classifyRings(paths2);
-
-      // --- ISLANDS INTERPOLATION (Physical Splitting / Merging) ---
-      let interpsIslands: ((t: number) => string)[] = [];
-      if (islands1.length === 0 && islands2.length === 0) {
-        // Safe fallback
-      } else if (islands1.length === 0) {
-        interpsIslands = combine([validPath1], islands2[0], { maxSegmentLength: 1.5 });
-      } else if (islands2.length === 0) {
-        interpsIslands = combine(islands1, validPath2, { maxSegmentLength: 1.5 });
-      } else if (islands1.length === islands2.length) {
-        interpsIslands = interpolateAll(islands1, islands2, { maxSegmentLength: 1.5, match: false });
-      } else if (islands1.length === 1) {
-        interpsIslands = separate(islands1[0], islands2, { maxSegmentLength: 1.5 });
-      } else if (islands2.length === 1) {
-        interpsIslands = combine(islands1, islands2[0], { maxSegmentLength: 1.5 });
+      if (validPath1 === validPath2) {
+        // Bypass flubber entirely if the characters are identical (Huge CPU saver)
+        morphInterpolator = () => validPath1;
       } else {
-        const minLength = Math.min(islands1.length, islands2.length);
-        for (let j = 0; j < minLength - 1; j++) {
-          const subInterp = interpolateAll([islands1[j]], [islands2[j]], { maxSegmentLength: 1.5, match: false });
-          interpsIslands.push(...subInterp);
-        }
-        if (islands1.length < islands2.length) {
-          const remaining = islands2.slice(minLength - 1);
-          const subInterps = separate(islands1[minLength - 1], remaining, { maxSegmentLength: 1.5 });
-          interpsIslands.push(...subInterps);
+        const cacheKey = `${c1}-${c2}`;
+        if (interpolatorCache.has(cacheKey)) {
+          // Use cached interpolator (Huge CPU saver for repeated words)
+          morphInterpolator = interpolatorCache.get(cacheKey)!;
         } else {
-          const remaining = islands1.slice(minLength - 1);
-          const subInterps = combine(remaining, islands2[minLength - 1], { maxSegmentLength: 1.5 });
-          interpsIslands.push(...subInterps);
+          // Compute heavy Flubber math
+          const paths1 = splitPathString(validPath1);
+          const paths2 = splitPathString(validPath2);
+
+          const getSignedArea = (pathStr: string) => {
+            const coords: number[][] = [];
+            const regex = /([0-9.-]+)[,\s]+([0-9.-]+)/g;
+            let match;
+            while ((match = regex.exec(pathStr)) !== null) {
+              coords.push([parseFloat(match[1]), parseFloat(match[2])]);
+            }
+            let area = 0;
+            for (let j = 0; j < coords.length - 1; j++) {
+              area += coords[j][0] * coords[j + 1][1] - coords[j + 1][0] * coords[j][1];
+            }
+            return area / 2;
+          };
+
+          const classifyRings = (paths: string[]) => {
+            if (paths.length === 0) return { islands: [], holes: [] };
+            const areas = paths.map(getSignedArea);
+
+            let maxAbsArea = -1;
+            let islandSign = 1;
+            areas.forEach((a) => {
+              if (Math.abs(a) > maxAbsArea) {
+                maxAbsArea = Math.abs(a);
+                islandSign = Math.sign(a) || 1;
+              }
+            });
+
+            const islands: string[] = [];
+            const holes: string[] = [];
+            paths.forEach((p, idx) => {
+              if (Math.sign(areas[idx]) === islandSign || Math.sign(areas[idx]) === 0) {
+                islands.push(p);
+              } else {
+                holes.push(p);
+              }
+            });
+            return { islands, holes };
+          };
+
+          const { islands: islands1, holes: holes1 } = classifyRings(paths1);
+          const { islands: islands2, holes: holes2 } = classifyRings(paths2);
+
+          const getFirstCoord = (pathStr: string) => {
+            const match = pathStr.match(/M\s*([0-9.-]+)[,\s]+([0-9.-]+)/);
+            return match ? { x: parseFloat(match[1]), y: parseFloat(match[2]) } : { x: 50, y: 50 };
+          };
+
+          // --- ISLANDS INTERPOLATION (Cell Division Logic to avoid slicing) ---
+
+          // Find the origin coordinates for new islands to sprout from or shrink into
+          const spawnCoord1 = islands1.length > 0 ? getFirstCoord(islands1[0]) : { x: 50, y: 50 };
+          const spawnCoord2 = islands2.length > 0 ? getFirstCoord(islands2[0]) : { x: 50, y: 50 };
+
+          while (islands1.length < islands2.length) {
+            const { x, y } = spawnCoord1;
+            islands1.push(`M ${x} ${y} L ${x} ${y} L ${x} ${y} Z`);
+          }
+          while (islands2.length < islands1.length) {
+            const { x, y } = spawnCoord2;
+            islands2.push(`M ${x} ${y} L ${x} ${y} L ${x} ${y} Z`);
+          }
+
+          let interpsIslands: ((t: number) => string)[] = [];
+          if (islands1.length > 0) {
+            interpsIslands = interpolateAll(islands1, islands2, { maxSegmentLength: 1.5, match: false });
+          }
+
+          // --- HOLES INTERPOLATION (Easing logic to avoid slicing bodies) ---
+          const originalHolesLength1 = holes1.length;
+          const originalHolesLength2 = holes2.length;
+
+          while (holes1.length < holes2.length) {
+            const targetRing = holes2[holes1.length];
+            const { x, y } = getFirstCoord(targetRing);
+            holes1.push(`M ${x} ${y} L ${x} ${y} L ${x} ${y} Z`);
+          }
+          while (holes2.length < holes1.length) {
+            const originRing = holes1[holes2.length];
+            const { x, y } = getFirstCoord(originRing);
+            holes2.push(`M ${x} ${y} L ${x} ${y} L ${x} ${y} Z`);
+          }
+
+          let interpsHoles: ((t: number) => string)[] = [];
+          if (holes1.length > 0) {
+            interpsHoles = interpolateAll(holes1, holes2, { maxSegmentLength: 1.5, match: false });
+          }
+
+          morphInterpolator = (v: number) => {
+            const islandPaths = interpsIslands.map((fn) => fn(v));
+            const holePaths = interpsHoles.map((fn, index) => {
+              let modV = v;
+              if (originalHolesLength1 < originalHolesLength2 && index >= originalHolesLength1) {
+                modV = Math.max(0, (v - 0.5) * 2);
+              } else if (originalHolesLength2 < originalHolesLength1 && index >= originalHolesLength2) {
+                modV = Math.min(1, v * 2);
+              }
+              return fn(modV);
+            });
+            return [...islandPaths, ...holePaths].join(" ");
+          };
+          
+          interpolatorCache.set(cacheKey, morphInterpolator);
         }
       }
-
-      // --- HOLES INTERPOLATION (Easing logic to avoid slicing bodies) ---
-      const originalHolesLength1 = holes1.length;
-      const originalHolesLength2 = holes2.length;
-
-      const getFirstCoord = (pathStr: string) => {
-        const match = pathStr.match(/M\s*([0-9.-]+)[,\s]+([0-9.-]+)/);
-        return match ? { x: parseFloat(match[1]), y: parseFloat(match[2]) } : { x: 50, y: 50 };
-      };
-
-      while (holes1.length < holes2.length) {
-        const targetRing = holes2[holes1.length];
-        const { x, y } = getFirstCoord(targetRing);
-        holes1.push(`M ${x} ${y} L ${x} ${y} L ${x} ${y} Z`);
-      }
-      while (holes2.length < holes1.length) {
-        const originRing = holes1[holes2.length];
-        const { x, y } = getFirstCoord(originRing);
-        holes2.push(`M ${x} ${y} L ${x} ${y} L ${x} ${y} Z`);
-      }
-
-      let interpsHoles: ((t: number) => string)[] = [];
-      if (holes1.length > 0) {
-        interpsHoles = interpolateAll(holes1, holes2, { maxSegmentLength: 1.5, match: false });
-      }
-
-      const morphInterpolator = (v: number) => {
-        const islandPaths = interpsIslands.map((fn) => fn(v));
-        const holePaths = interpsHoles.map((fn, index) => {
-          let modV = v;
-          if (originalHolesLength1 < originalHolesLength2 && index >= originalHolesLength1) {
-            modV = Math.max(0, (v - 0.5) * 2);
-          } else if (originalHolesLength2 < originalHolesLength1 && index >= originalHolesLength2) {
-            modV = Math.min(1, v * 2);
-          }
-          return fn(modV);
-        });
-        return [...islandPaths, ...holePaths].join(" ");
-      };
 
       chars.push({
         id: i,
@@ -223,15 +230,19 @@ export const Henkei: React.FC<HenkeiProps> = ({ text1, text2, progress, classNam
   );
 };
 
-const HenkeiContainer: React.FC<{
-  progress: MotionValue<number>;
-  startWidth: number;
-  endWidth: number;
-  children: React.ReactNode;
-}> = ({ progress, startWidth, endWidth, children }) => {
-  const containerWidth = useTransform(progress, [0, 1], [startWidth, endWidth]);
+const HenkeiContainer = ({ progress, startWidth, endWidth, children }: any) => {
+  const widths = React.useRef({ startWidth, endWidth });
+  React.useEffect(() => {
+    widths.current = { startWidth, endWidth };
+  }, [startWidth, endWidth]);
+
+  const containerWidth = useTransform(progress, (v: any) => {
+    const { startWidth: s, endWidth: e } = widths.current;
+    return s + (e - s) * v;
+  });
+
   return (
-    <motion.div className="relative flex items-center" style={{ width: containerWidth, height: 100 }}>
+    <motion.div className="relative h-[100px]" style={{ width: containerWidth }}>
       {children}
     </motion.div>
   );
@@ -247,13 +258,22 @@ interface HenkeiCharItem {
 }
 
 const HenkeiCharacter: React.FC<{ item: HenkeiCharItem; progress: MotionValue<number> }> = ({ item, progress }) => {
-  // Smoothly interpolate the absolute X position!
-  const x = useTransform(progress, [0, 1], [item.startLeft, item.endLeft]);
+  // Store the latest item in a ref to avoid stale closures in useTransform
+  const itemRef = React.useRef(item);
+  React.useEffect(() => {
+    itemRef.current = item;
+  }, [item]);
 
-  // Interpolate the SVG Path d attribute
-  const morphPath = useTransform(progress, (v) => {
+  // Smoothly interpolate the absolute X position manually to avoid stale array dependencies
+  const x = useTransform(progress, (v: any) => {
+    const cur = itemRef.current;
+    return cur.startLeft + (cur.endLeft - cur.startLeft) * v;
+  });
+
+  // Interpolate the SVG Path d attribute reading from the latest ref
+  const morphPath = useTransform(progress, (v: any) => {
     try {
-      return item.morphInterpolator(v);
+      return itemRef.current.morphInterpolator(v);
     } catch (e) {
       console.log(e);
       return "";
@@ -273,3 +293,45 @@ const HenkeiCharacter: React.FC<{ item: HenkeiCharItem; progress: MotionValue<nu
     </motion.div>
   );
 };
+
+export const HenkeiAuto: React.FC<{ words: string[], interval?: number, duration?: number, className?: string }> = ({ words, interval = 3000, duration = 1000, className }) => {
+  const [index, setIndex] = useState(0);
+
+  // Cycle through words based on the interval
+  useEffect(() => {
+    if (words.length <= 1) return;
+    // Ensure the interval is always slightly longer than the duration to prevent cutting off the animation
+    const safeInterval = Math.max(interval, duration + 100);
+    const timer = setInterval(() => {
+      setIndex(prev => (prev + 1) % words.length);
+    }, safeInterval);
+    return () => clearInterval(timer);
+  }, [words, interval, duration]);
+
+  const text = words.length > 0 ? words[index] : "";
+
+  // The animation state previously in HenkeiReactive
+  const [texts, setTexts] = useState({ origin: text, target: text });
+  const progress = useMotionValue(0);
+
+  // 1. Derived state: when text prop changes, update our origin and target
+  useEffect(() => {
+    if (text !== texts.target) {
+      setTexts(prev => ({ origin: prev.target, target: text }));
+    }
+  }, [text, texts.target]);
+
+  // 2. Animation trigger: when texts change (and origin != target), run the animation
+  useEffect(() => {
+    if (texts.origin !== texts.target) {
+      progress.set(0);
+      const controls = animate(progress, 1, { duration: duration / 1000, ease: "easeInOut" });
+      
+      // Cleanup: if texts change again before animation finishes, stop the old animation
+      return () => controls.stop();
+    }
+  }, [texts, progress, duration]);
+
+  return <HenkeiCore text1={texts.origin} text2={texts.target} progress={progress} className={className} />;
+};
+
