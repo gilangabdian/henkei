@@ -36,6 +36,15 @@ export interface HenkeiProps {
   fontUrl: string;
 }
 
+export interface HenkeiCharItem {
+  id: number;
+  morphInterpolator: (t: number) => string;
+  startLeft: number;
+  endLeft: number;
+  width1: number;
+  width2: number;
+}
+
 const interpolatorCache = new Map<string, (v: number) => string>();
 
 export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, className, fontUrl }) => {
@@ -44,7 +53,7 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
 
   // Calculate characters and their morph paths with useMemo to prevent freezing
   const charactersData = React.useMemo(() => {
-    const chars = [];
+    const chars: HenkeiCharItem[] = [];
     let currentStartLeft = 0;
     let currentEndLeft = 0;
 
@@ -160,7 +169,7 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
 
           let interpsIslands: ((t: number) => string)[] = [];
           if (islands1.length > 0) {
-            interpsIslands = interpolateAll(islands1, islands2, { maxSegmentLength: 1.5, match: false });
+            interpsIslands = (interpolateAll as any)(islands1, islands2, { maxSegmentLength: 1.5, match: false });
           }
 
           // --- HOLES INTERPOLATION (Easing logic to avoid slicing bodies) ---
@@ -180,7 +189,7 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
 
           let interpsHoles: ((t: number) => string)[] = [];
           if (holes1.length > 0) {
-            interpsHoles = interpolateAll(holes1, holes2, { maxSegmentLength: 1.5, match: false });
+            interpsHoles = (interpolateAll as any)(holes1, holes2, { maxSegmentLength: 1.5, match: false });
           }
 
           morphInterpolator = (v: number) => {
@@ -249,14 +258,6 @@ const HenkeiContainer = ({ progress, startWidth, endWidth, children }: { progres
   );
 };
 
-interface HenkeiCharItem {
-  id: number;
-  morphInterpolator: (t: number) => string;
-  startLeft: number;
-  endLeft: number;
-  width1: number;
-  width2: number;
-}
 
 const HenkeiCharacter: React.FC<{ item: HenkeiCharItem; progress: MotionValue<number> }> = ({ item, progress }) => {
   // Store the latest item in a ref to avoid stale closures in useTransform
