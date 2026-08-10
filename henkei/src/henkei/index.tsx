@@ -1,35 +1,8 @@
 import React, { useEffect, useLayoutEffect, useState } from "react";
 import { motion, useTransform, MotionValue, useMotionValue, animate } from "framer-motion";
-import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
-import opentype from "opentype.js";
 import polygonClipping from "polygon-clipping";
 import { interpolateAll, splitPathString } from "flubber";
-
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
-
-// Hook to load font
-function useFont(url: string) {
-  const [fontData, setFontData] = useState<{ font: opentype.Font | null, url: string }>({ font: null, url });
-  useEffect(() => {
-    // eslint-disable-next-line
-    setFontData({ font: null, url });
-    fetch(url)
-      .then((res) => res.arrayBuffer())
-      .then((buffer) => {
-        try {
-          const f = opentype.parse(buffer);
-          setFontData({ font: f, url });
-        } catch (e) {
-          console.error("Error parsing font:", e);
-        }
-      })
-      .catch((err) => console.error("Error fetching font:", err));
-  }, [url]);
-  return fontData;
-}
+import { useFont } from "./useFont";
 
 export interface HenkeiProps {
   text1: string;
@@ -50,7 +23,7 @@ export interface HenkeiCharItem {
 
 const interpolatorCache = new Map<string, (v: number) => string>();
 
-export const HenkeiCore: React.FC<HenkeiProps> = ({ 
+const HenkeiInternal: React.FC<HenkeiProps> = ({ 
   text1, 
   text2, 
   progress, 
@@ -473,13 +446,13 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({
   }, [text1, text2, fontData.font, fontData.url, maxLength, fontUrl]);
 
   if (!fontData.font || fontData.url !== fontUrl) {
-    return <div className="text-2xl text-gray-400 font-bold tracking-widest animate-pulse">Loading Font...</div>;
+    return <div style={{ fontSize: '1.5rem', color: '#9ca3af', fontWeight: 'bold', letterSpacing: '0.1em' }}>Loading Font...</div>;
   }
 
   const { chars: characters, currentStartLeft, currentEndLeft } = charactersData;
 
   return (
-    <div className={cn("relative flex items-center justify-center mix-blend-darken", className)}>
+    <div className={className} style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <HenkeiContainer progress={progress} startWidth={currentStartLeft} endWidth={currentEndLeft}>
         {characters.map((item) => (
           <HenkeiCharacter key={item.id} item={item} progress={progress} />
@@ -501,7 +474,8 @@ const HenkeiContainer = ({ progress, startWidth, endWidth, children }: { progres
   });
 
   return (
-    <motion.div className="relative inline-flex items-center justify-center" style={{ width: containerWidth, height: "1em" }}>
+    <motion.div
+      style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: containerWidth, height: "1em" }}>
       {children}
     </motion.div>
   );
@@ -533,19 +507,21 @@ const HenkeiCharacter: React.FC<{ item: HenkeiCharItem; progress: MotionValue<nu
 
   return (
     <motion.div
-      className="absolute top-0 overflow-visible"
       style={{
+        position: 'absolute',
+        top: 0,
+        overflow: 'visible',
         left: x,
         height: "1em",
       }}>
-      <svg className="absolute top-0 left-0 overflow-visible pointer-events-none" height="1em" viewBox="0 0 100 100">
+      <svg style={{ position: 'absolute', top: 0, left: 0, overflow: 'visible', pointerEvents: 'none' }} height="1em" viewBox="0 0 100 100">
         <motion.path d={morphPath} fill="currentColor" fillRule="evenodd" clipRule="evenodd" />
       </svg>
     </motion.div>
   );
 };
 
-export const Henkei: React.FC<{ words: string[], interval?: number, duration?: number, className?: string, fontUrl?: string }> = ({ words, interval = 3000, duration = 1000, className, fontUrl = "/Chewy-Regular.ttf" }) => {
+export const Henkei: React.FC<{ words: string[], interval?: number, duration?: number, className?: string, fontUrl?: string }> = ({ words, interval = 3000, duration = 1000, className, fontUrl = "https://unpkg.com/@fontsource/inter@5.0.19/files/inter-latin-400-normal.woff" }) => {
   const [index, setIndex] = useState(0);
 
   // Cycle through words based on the interval
@@ -581,6 +557,6 @@ export const Henkei: React.FC<{ words: string[], interval?: number, duration?: n
     }
   }, [texts, progress, duration]);
 
-  return <HenkeiCore text1={texts.origin} text2={texts.target} progress={progress} className={className} fontUrl={fontUrl} />;
+  return <HenkeiInternal text1={texts.origin} text2={texts.target} progress={progress} className={className} fontUrl={fontUrl} />;
 };
 
