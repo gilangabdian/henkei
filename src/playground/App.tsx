@@ -1,9 +1,10 @@
 import { useState, useDeferredValue } from "react";
+import { Icon } from "@iconify/react";
 import { Henkei } from "../henkei";
 
 function App() {
   // Config for Auto-Loop Mode
-  const [autoWordsStr, setAutoWordsStr] = useState("Edit, Me, in, Here!, 愛");
+  const [autoWordsStr, setAutoWordsStr] = useState("Hi(Hello), Edit, Me, in, Here!");
   const [autoInterval, setAutoInterval] = useState(3000);
   const [autoDuration, setAutoDuration] = useState(1000);
   const [fontUrl, setFontUrl] = useState("https://unpkg.com/@fontsource/chewy@5.0.8/files/chewy-latin-400-normal.woff");
@@ -20,11 +21,24 @@ function App() {
 
   return (
     <div className="min-h-screen w-full bg-[#FEF9E1] text-black font-sans p-8 flex flex-col items-center justify-center">
-      <div className="w-full max-w-4xl flex flex-col items-start mb-16">
+      <div className="w-full max-w-4xl flex flex-col items-start mb-8">
         <h1 className="text-7xl font-chewy mb-2 tracking-wide text-left text-[#3D3522]">Henkei</h1>
         <p className="text-[#8A7D63] font-medium text-left text-lg max-w-md leading-relaxed">
           A React component that can be used to transform text with animation
         </p>
+
+        <div className="flex items-center space-x-6 mt-4">
+          <a
+            href="https://github.com/gilangabdian/henkei"
+            className="text-[#3D3522]/70 hover:text-[#3D3522] transition-colors">
+            <Icon icon="mdi:github" className="w-8 h-8" />
+          </a>
+          <a
+            href="https://www.npmjs.com/package/henkei"
+            className="text-[#3D3522]/70 hover:text-[#3D3522] transition-colors">
+            <Icon icon="gg:npm" className="w-8 h-8" />
+          </a>
+        </div>
       </div>
 
       {/* Floating Config Panel at Top Right */}
