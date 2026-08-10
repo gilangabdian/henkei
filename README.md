@@ -3,7 +3,7 @@
 </p>
 
 # Henkei | へんけい
-Henkei is a React component for transforming words with animation. It smoothly transforms each letter into the corresponding letter of the next word
+Henkei is a React animation component for transforming words through animation. It smoothly morphs each letter into the corresponding letter of the next word
 
 ## 📦 Installation
 
