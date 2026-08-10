@@ -1,4 +1,6 @@
-<img src="https://raw.githubusercontent.com/gilangabdian/henkei/main/public/icon.svg" width="200" alt="Henkei Logo" />
+<p align="center">
+  <img src="https://raw.githubusercontent.com/gilangabdian/henkei/main/public/icon.svg" width="200" alt="Henkei Logo">
+</p>
 
 # Henkei | へんけい
 Henkei is a React component for transforming words with animation. It smoothly transforms each letter into the corresponding letter of the next word
