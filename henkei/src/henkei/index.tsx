@@ -36,7 +36,7 @@ export interface HenkeiProps {
   text2: string;
   progress: MotionValue<number>;
   className?: string;
-  fontUrl: string;
+  fontUrl?: string;
 }
 
 export interface HenkeiCharItem {
@@ -50,7 +50,13 @@ export interface HenkeiCharItem {
 
 const interpolatorCache = new Map<string, (v: number) => string>();
 
-export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, className, fontUrl }) => {
+export const HenkeiCore: React.FC<HenkeiProps> = ({ 
+  text1, 
+  text2, 
+  progress, 
+  className, 
+  fontUrl = "https://unpkg.com/@fontsource/inter@5.0.19/files/inter-latin-400-normal.woff" 
+}) => {
   const fontData = useFont(fontUrl);
   const maxLength = Math.max(text1.length, text2.length, 1);
 
