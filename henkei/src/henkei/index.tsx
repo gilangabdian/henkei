@@ -147,8 +147,7 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
 
       const unionPolygons = (pathsStr: string) => {
         let currentPoly: number[][] = [];
-        const polygons: number[][][][] = [];
-        let startX = 0, startY = 0;
+        const allRings: number[][][] = [];
         let prevX = 0, prevY = 0;
 
         const cmdRegex = /([MLCQZ])([^MLCQZ]*)/ig;
@@ -156,7 +155,7 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
         while ((match = cmdRegex.exec(pathsStr)) !== null) {
             const type = match[1].toUpperCase();
             if (type === 'Z') {
-                if (currentPoly.length > 0) polygons.push([[...currentPoly]]);
+                if (currentPoly.length > 0) allRings.push([...currentPoly]);
                 currentPoly = [];
                 continue;
             }
@@ -165,9 +164,9 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
             const nums = argsStr.split(/[\s,]+/).map(parseFloat).filter(n => !isNaN(n));
 
             if (type === 'M') {
-                if (currentPoly.length > 0) polygons.push([[...currentPoly]]);
+                if (currentPoly.length > 0) allRings.push([...currentPoly]);
                 currentPoly = [];
-                if (nums.length >= 2) { prevX = nums[0]; prevY = nums[1]; startX = prevX; startY = prevY; currentPoly.push([prevX, prevY]); }
+                if (nums.length >= 2) { prevX = nums[0]; prevY = nums[1]; currentPoly.push([prevX, prevY]); }
             } else if (type === 'L') {
                 if (nums.length >= 2) { prevX = nums[0]; prevY = nums[1]; currentPoly.push([prevX, prevY]); }
             } else if (type === 'Q') {
@@ -188,15 +187,58 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
                 }
             }
         }
-        if (currentPoly.length > 0) polygons.push([[...currentPoly]]);
+        if (currentPoly.length > 0) allRings.push([...currentPoly]);
 
-        if (polygons.length === 0) return pathsStr;
+        if (allRings.length === 0) return pathsStr;
+
+        const getArea = (ring: number[][]) => {
+            let a = 0;
+            for (let j = 0; j < ring.length - 1; j++) {
+                a += ring[j][0] * ring[j + 1][1] - ring[j + 1][0] * ring[j][1];
+            }
+            if (ring.length > 0) {
+                a += ring[ring.length - 1][0] * ring[0][1] - ring[0][0] * ring[ring.length - 1][1];
+            }
+            return a / 2;
+        };
+
+        const areas = allRings.map(getArea);
+        let maxAbsArea = -1;
+        let dominantSign = 1;
+        areas.forEach(a => {
+            if (Math.abs(a) > maxAbsArea) {
+                maxAbsArea = Math.abs(a);
+                dominantSign = Math.sign(a) || 1;
+            }
+        });
+
+        const islands: number[][][][] = [];
+        const holes: number[][][][] = [];
+        allRings.forEach((ring, idx) => {
+            if (Math.sign(areas[idx]) === dominantSign || Math.sign(areas[idx]) === 0) {
+                islands.push([[...ring]]);
+            } else {
+                holes.push([[...ring]]);
+            }
+        });
 
         try {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const unioned = (polygonClipping.union as any)(...polygons);
+            let finalShape: any[] = [];
+            if (islands.length > 0) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                finalShape = (polygonClipping.union as any)(...islands);
+            }
+            
+            if (holes.length > 0 && finalShape.length > 0) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const holesUnioned = (polygonClipping.union as any)(...holes);
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                finalShape = (polygonClipping.difference as any)(finalShape, holesUnioned);
+            }
+
             let outStr = '';
-            for (const multi of unioned) {
+            for (const multi of finalShape) {
                 for (const ring of multi) {
                     if (ring.length === 0) continue;
                     outStr += `M ${Number(ring[0][0].toFixed(2))} ${Number(ring[0][1].toFixed(2))} `;
@@ -207,7 +249,7 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
                 }
             }
             return outStr;
-        } catch (e) {
+        } catch {
             return pathsStr;
         }
       };
@@ -221,7 +263,7 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
         // Bypass flubber entirely if the characters are identical (Huge CPU saver)
         morphInterpolator = () => validPath1;
       } else {
-        const cacheKey = `${fontUrl}-${fontSize}-${c1}-${c2}-v7`;
+        const cacheKey = `${fontUrl}-${fontSize}-${c1}-${c2}-v8`;
         if (interpolatorCache.has(cacheKey)) {
           // Use cached interpolator (Huge CPU saver for repeated words)
           morphInterpolator = interpolatorCache.get(cacheKey)!;
@@ -288,6 +330,7 @@ export const HenkeiCore: React.FC<HenkeiProps> = ({ text1, text2, progress, clas
 
             const potentialIslands: string[] = [];
             const potentialHoles: string[] = [];
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const islandBoundsList: any[] = [];
             
             paths.forEach((p, idx) => {
