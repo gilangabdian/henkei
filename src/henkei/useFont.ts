@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import opentype from "opentype.js";
 
 export const useFont = (url: string) => {
-  const [font, setFont] = useState<opentype.Font | null>(null);
+  const [fontData, setFontData] = useState<{ font: opentype.Font | null; url: string }>({ font: null, url: "" });
 
   useEffect(() => {
     let active = true;
@@ -12,7 +12,7 @@ export const useFont = (url: string) => {
         const buffer = await response.arrayBuffer();
         if (active) {
           const loadedFont = opentype.parse(buffer);
-          setFont(loadedFont);
+          setFontData({ font: loadedFont, url });
         }
       } catch (err) {
         console.error("Error fetching font:", err);
@@ -24,5 +24,5 @@ export const useFont = (url: string) => {
     };
   }, [url]);
 
-  return { font, url };
+  return fontData;
 };

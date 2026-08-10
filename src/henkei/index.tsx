@@ -14,14 +14,15 @@ export interface HenkeiProps {
 
 export interface HenkeiCharItem {
   id: number;
-  morphInterpolator: (t: number) => string;
+  morphInterpolatorIslands: (t: number) => string;
+  morphInterpolatorHoles: (t: number) => string;
   startLeft: number;
   endLeft: number;
   width1: number;
   width2: number;
 }
 
-const interpolatorCache = new Map<string, (v: number) => string>();
+const interpolatorCache = new Map<string, { islands: (v: number) => string, holes: (v: number) => string }>();
 
 const HenkeiInternal: React.FC<HenkeiProps> = ({ 
   text1, 
@@ -233,19 +234,25 @@ const HenkeiInternal: React.FC<HenkeiProps> = ({
         }
       };
 
-      const validPath1 = unionPolygons(path1 || "M 50 40 L 50.1 40 L 50.1 40.1 L 50 40.1 Z");
-      const validPath2 = unionPolygons(path2 || "M 50 40 L 50.1 40 L 50.1 40.1 L 50 40.1 Z");
+      // A symmetrical diamond is much more stable for Flubber to collapse into than a tiny square.
+      const defaultDot = "M 50 49 L 51 50 L 50 51 L 49 50 Z";
+      const validPath1 = unionPolygons(path1 || defaultDot);
+      const validPath2 = unionPolygons(path2 || defaultDot);
 
-      let morphInterpolator: (v: number) => string;
+      let morphInterpolatorIslands: (v: number) => string;
+      let morphInterpolatorHoles: (v: number) => string;
 
       if (validPath1 === validPath2) {
         // Bypass flubber entirely if the characters are identical (Huge CPU saver)
-        morphInterpolator = () => validPath1;
+        morphInterpolatorIslands = () => validPath1;
+        morphInterpolatorHoles = () => "";
       } else {
         const cacheKey = `${fontUrl}-${fontSize}-${c1}-${c2}-v8`;
         if (interpolatorCache.has(cacheKey)) {
           // Use cached interpolator (Huge CPU saver for repeated words)
-          morphInterpolator = interpolatorCache.get(cacheKey)!;
+          const cached = interpolatorCache.get(cacheKey)!;
+          morphInterpolatorIslands = cached.islands;
+          morphInterpolatorHoles = cached.holes;
         } else {
           // Compute heavy Flubber math
           const paths1 = splitPathString(validPath1);
@@ -312,12 +319,22 @@ const HenkeiInternal: React.FC<HenkeiProps> = ({
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const islandBoundsList: any[] = [];
             
+            const reversePolygon = (pathStr: string) => {
+              const coords = [...pathStr.matchAll(/([0-9.-]+)[,\s]+([0-9.-]+)/g)];
+              if (coords.length === 0) return pathStr;
+              let rev = `M ${coords[coords.length-1][1]} ${coords[coords.length-1][2]} `;
+              for(let i = coords.length-2; i >= 0; i--) {
+                  rev += `L ${coords[i][1]} ${coords[i][2]} `;
+              }
+              return rev + 'Z';
+            };
+
             paths.forEach((p, idx) => {
               if (Math.sign(areas[idx]) === islandSign || Math.sign(areas[idx]) === 0) {
                 potentialIslands.push(p);
                 islandBoundsList.push(bounds[idx]);
               } else {
-                potentialHoles.push(p);
+                potentialHoles.push(p); // Keep original for bounds lookup!
               }
             });
 
@@ -346,7 +363,10 @@ const HenkeiInternal: React.FC<HenkeiProps> = ({
               }
             });
 
-            return { islands, holes };
+            // Reverse holes so they have positive area, preventing Flubber crashes!
+            const finalHoles = holes.map(reversePolygon);
+
+            return { islands, holes: finalHoles };
           };
 
           const { islands: islands1, holes: holes1 } = classifyRings(paths1);
@@ -374,19 +394,23 @@ const HenkeiInternal: React.FC<HenkeiProps> = ({
             return match ? { x: parseFloat(match[1]), y: parseFloat(match[2]) } : { x: 50, y: 50 };
           };
 
-          // --- ISLANDS INTERPOLATION (Cell Division Logic to avoid slicing) ---
-
-          // Find the origin coordinates for new islands to sprout from or shrink into
-          const spawnCoord1 = islands1.length > 0 ? getCenter(islands1[0]) : { x: 50, y: 50 };
-          const spawnCoord2 = islands2.length > 0 ? getFirstCoord(islands2[0]) : { x: 50, y: 50 };
+          // --- ISLANDS INTERPOLATION (Duplicate to Merge/Split naturally) ---
 
           while (islands1.length < islands2.length) {
-            const { x, y } = spawnCoord1;
-            islands1.push(`M ${x} ${y} L ${x+0.1} ${y} L ${x} ${y+0.1} Z`);
+            if (islands1.length > 0) {
+              islands1.push(islands1[islands1.length - 1]);
+            } else {
+              const { x, y } = getCenter(islands2[islands1.length]);
+              islands1.push(`M ${x} ${y} L ${x+0.1} ${y} L ${x} ${y+0.1} Z`);
+            }
           }
           while (islands2.length < islands1.length) {
-            const { x, y } = spawnCoord2;
-            islands2.push(`M ${x} ${y} L ${x+0.1} ${y} L ${x} ${y+0.1} Z`);
+            if (islands2.length > 0) {
+              islands2.push(islands2[islands2.length - 1]);
+            } else {
+              const { x, y } = getCenter(islands1[islands2.length]);
+              islands2.push(`M ${x} ${y} L ${x+0.1} ${y} L ${x} ${y+0.1} Z`);
+            }
           }
 
           let interpsIslands: ((t: number) => string)[] = [];
@@ -395,46 +419,55 @@ const HenkeiInternal: React.FC<HenkeiProps> = ({
             interpsIslands = (interpolateAll as any)(islands1, islands2, { maxSegmentLength: 1.5, match: false });
           }
 
-          // --- HOLES INTERPOLATION (Easing logic to avoid slicing bodies) ---
-          const originalHolesLength1 = holes1.length;
-          const originalHolesLength2 = holes2.length;
+          // --- HOLES INTERPOLATION (Shrink-In-Place) ---
+          // Holes MUST shrink to a dot when disappearing, otherwise they cut the new island shape!
 
           while (holes1.length < holes2.length) {
-            const { x, y } = spawnCoord1;
-            holes1.push(`M ${x} ${y} L ${x+0.1} ${y} L ${x} ${y+0.1} Z`);
+            const { x, y } = getCenter(holes2[holes1.length]);
+            holes1.push(`M ${x} ${y-0.1} L ${x+0.1} ${y} L ${x} ${y+0.1} L ${x-0.1} ${y} Z`);
           }
           while (holes2.length < holes1.length) {
-            const { x, y } = spawnCoord2;
-            holes2.push(`M ${x} ${y} L ${x+0.1} ${y} L ${x} ${y+0.1} Z`);
+            const { x, y } = getCenter(holes1[holes2.length]);
+            holes2.push(`M ${x} ${y-0.1} L ${x+0.1} ${y} L ${x} ${y+0.1} L ${x-0.1} ${y} Z`);
           }
 
           let interpsHoles: ((t: number) => string)[] = [];
           if (holes1.length > 0) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            interpsHoles = (interpolateAll as any)(holes1, holes2, { maxSegmentLength: 1.5, match: false });
+            try {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const rawInterps = (interpolateAll as any)(holes1, holes2, { maxSegmentLength: 1.5, match: false });
+              interpsHoles = holes1.map((h1, idx) => {
+                const h2 = holes2[idx];
+                if (h1 === h2) return (v: number) => h1; // Bypass identical holes, saves CPU & avoids jitter
+                return (v: number) => {
+                  try {
+                    return rawInterps[idx](v);
+                  } catch (e) {
+                    return v < 0.5 ? h1 : h2; // Fallback snap
+                  }
+                };
+              });
+            } catch (e) {
+              interpsHoles = holes1.map((h1, idx) => (v: number) => v < 0.5 ? h1 : holes2[idx]);
+            }
           }
 
-          morphInterpolator = (v: number) => {
-            const islandPaths = interpsIslands.map((fn) => fn(v));
-            const holePaths = interpsHoles.map((fn, index) => {
-              let modV = v;
-              if (originalHolesLength1 < originalHolesLength2 && index >= originalHolesLength1) {
-                modV = Math.max(0, (v - 0.5) * 2);
-              } else if (originalHolesLength2 < originalHolesLength1 && index >= originalHolesLength2) {
-                modV = Math.min(1, v * 2);
-              }
-              return fn(modV);
-            });
-            return [...islandPaths, ...holePaths].join(" ");
+          morphInterpolatorIslands = (v: number) => {
+            return interpsIslands.map((fn) => fn(v)).join(" ");
           };
           
-          interpolatorCache.set(cacheKey, morphInterpolator);
+          morphInterpolatorHoles = (v: number) => {
+            return interpsHoles.map((fn) => fn(v)).join(" ");
+          };
+          
+          interpolatorCache.set(cacheKey, { islands: morphInterpolatorIslands, holes: morphInterpolatorHoles });
         }
       }
 
       chars.push({
         id: i,
-        morphInterpolator,
+        morphInterpolatorIslands,
+        morphInterpolatorHoles,
         startLeft,
         endLeft,
         width1,
@@ -497,12 +530,22 @@ const HenkeiCharacter: React.FC<{ item: HenkeiCharItem; progress: MotionValue<nu
 
   // Interpolate the SVG Path d attribute reading from the latest ref
   const morphPath = useTransform(progress, (v: number) => {
+    let path = "";
     try {
-      return itemRef.current.morphInterpolator(v);
+      path += itemRef.current.morphInterpolatorIslands(v);
     } catch (e) {
-      console.log(e);
-      return "";
+      // ignore
     }
+    try {
+      const fastV = 1 - Math.pow(1 - v, 3);
+      const holesPath = itemRef.current.morphInterpolatorHoles(fastV);
+      if (holesPath) {
+        path += " " + holesPath;
+      }
+    } catch (e) {
+      // ignore
+    }
+    return path;
   });
 
   return (
@@ -514,9 +557,9 @@ const HenkeiCharacter: React.FC<{ item: HenkeiCharItem; progress: MotionValue<nu
         left: x,
         height: "1em",
       }}>
-      <svg style={{ position: 'absolute', top: 0, left: 0, overflow: 'visible', pointerEvents: 'none' }} height="1em" viewBox="0 0 100 100">
-        <motion.path d={morphPath} fill="currentColor" fillRule="evenodd" clipRule="evenodd" />
-      </svg>
+      <motion.svg style={{ position: 'absolute', top: 0, left: 0, overflow: 'visible', pointerEvents: 'none' }} height="1em" viewBox="0 0 100 100">
+        <motion.path d={morphPath} fill="currentColor" fillRule="evenodd" />
+      </motion.svg>
     </motion.div>
   );
 };

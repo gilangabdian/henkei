@@ -42,7 +42,7 @@ If you want the word to transform into a word that has an extreme form like word
 | **`className`**| `string`  | `undefined`   | Standard React class name applied to the outer wrapper element. |
 | **`fontUrl`** | `string`   | `"https://unpkg.com/@fontsource/inter@5.0.19/files/inter-latin-400-normal.woff"` | URL to a valid `.ttf` or `.woff` font file containing the characters you want to render. |
 
-## Tech Stack
+## 🚀 Tech Stack
 
 - [React](https://react.dev) - UI
 - [Framer Motion](https://www.framer.com/motion/) - Animation
