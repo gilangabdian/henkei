@@ -83,7 +83,7 @@ function App() {
           </div>
           <div className="flex-1">
             <label className="text-[9px] font-bold uppercase text-[#A6997B] flex justify-between mb-1">
-              <span>Delay</span> <span>{autoInterval}ms</span>
+              <span>Interval</span> <span>{autoInterval}ms</span>
             </label>
             <input
               type="range"
@@ -97,7 +97,7 @@ function App() {
           </div>
           <div className="flex-1">
             <label className="text-[9px] font-bold uppercase text-[#A6997B] flex justify-between mb-1">
-              <span>Morph</span> <span>{autoDuration}ms</span>
+              <span>Duration</span> <span>{autoDuration}ms</span>
             </label>
             <input
               type="range"

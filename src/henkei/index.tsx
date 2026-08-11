@@ -228,6 +228,14 @@ const HenkeiInternal: React.FC<HenkeiProps> = ({
                     outStr += 'Z ';
                 }
             }
+
+            // FALLBACK: If polygonClipping completely destroyed the shape (e.g. simplified it to nothing due to floating point precision on weird overlapping strokes)
+            // A foolproof heuristic: polygonClipping converts curves to many line segments, so valid output should be LARGER than the input.
+            // If the output string is shorter than the input string, it means polygonClipping destroyed the shape!
+            if (!outStr.trim() || outStr.length < pathsStr.length) {
+                return pathsStr;
+            }
+
             return outStr;
         } catch {
             return pathsStr;
@@ -247,7 +255,7 @@ const HenkeiInternal: React.FC<HenkeiProps> = ({
         morphInterpolatorIslands = () => validPath1;
         morphInterpolatorHoles = () => "";
       } else {
-        const cacheKey = `${fontUrl}-${fontSize}-${c1}-${c2}-v8`;
+        const cacheKey = `${fontUrl}-${fontSize}-${c1}-${c2}-v15`;
         if (interpolatorCache.has(cacheKey)) {
           // Use cached interpolator (Huge CPU saver for repeated words)
           const cached = interpolatorCache.get(cacheKey)!;
@@ -389,12 +397,9 @@ const HenkeiInternal: React.FC<HenkeiProps> = ({
             return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
           };
 
-          const getFirstCoord = (pathStr: string) => {
-            const match = pathStr.match(/M\s*([0-9.-]+)[,\s]+([0-9.-]+)/);
-            return match ? { x: parseFloat(match[1]), y: parseFloat(match[2]) } : { x: 50, y: 50 };
-          };
-
           // --- ISLANDS INTERPOLATION (Duplicate to Merge/Split naturally) ---
+          // Since we use SVG <mask fill-rule="nonzero">, overlapping paths don't cancel each other out!
+          // We can safely duplicate them to create natural splits and merges!
 
           while (islands1.length < islands2.length) {
             if (islands1.length > 0) {
@@ -419,16 +424,29 @@ const HenkeiInternal: React.FC<HenkeiProps> = ({
             interpsIslands = (interpolateAll as any)(islands1, islands2, { maxSegmentLength: 1.5, match: false });
           }
 
-          // --- HOLES INTERPOLATION (Shrink-In-Place) ---
-          // Holes MUST shrink to a dot when disappearing, otherwise they cut the new island shape!
+          // --- HOLES INTERPOLATION (Slide-Out or Duplicate) ---
+          // Holes should also duplicate if possible. If the target has no holes, 
+          // we slide the hole out to the top edge of the island so it doesn't shrink in the middle.
 
           while (holes1.length < holes2.length) {
-            const { x, y } = getCenter(holes2[holes1.length]);
-            holes1.push(`M ${x} ${y-0.1} L ${x+0.1} ${y} L ${x} ${y+0.1} L ${x-0.1} ${y} Z`);
+            if (holes1.length > 0) {
+              holes1.push(holes1[holes1.length - 1]);
+            } else {
+              const bounds = getBounds(islands1[0] || defaultDot);
+              const { x } = getCenter(holes2[holes1.length]);
+              const y = bounds.minY; // Slide in from the top
+              holes1.push(`M ${x} ${y-0.1} L ${x+0.1} ${y} L ${x} ${y+0.1} L ${x-0.1} ${y} Z`);
+            }
           }
           while (holes2.length < holes1.length) {
-            const { x, y } = getCenter(holes1[holes2.length]);
-            holes2.push(`M ${x} ${y-0.1} L ${x+0.1} ${y} L ${x} ${y+0.1} L ${x-0.1} ${y} Z`);
+            if (holes2.length > 0) {
+              holes2.push(holes2[holes2.length - 1]);
+            } else {
+              const bounds = getBounds(islands2[0] || defaultDot);
+              const { x } = getCenter(holes1[holes2.length]);
+              const y = bounds.minY; // Slide out to the top
+              holes2.push(`M ${x} ${y-0.1} L ${x+0.1} ${y} L ${x} ${y+0.1} L ${x-0.1} ${y} Z`);
+            }
           }
 
           let interpsHoles: ((t: number) => string)[] = [];
@@ -438,26 +456,43 @@ const HenkeiInternal: React.FC<HenkeiProps> = ({
               const rawInterps = (interpolateAll as any)(holes1, holes2, { maxSegmentLength: 1.5, match: false });
               interpsHoles = holes1.map((h1, idx) => {
                 const h2 = holes2[idx];
-                if (h1 === h2) return (v: number) => h1; // Bypass identical holes, saves CPU & avoids jitter
+                if (h1 === h2) return () => h1; // Bypass identical holes, saves CPU & avoids jitter
                 return (v: number) => {
                   try {
                     return rawInterps[idx](v);
-                  } catch (e) {
+                  } catch {
                     return v < 0.5 ? h1 : h2; // Fallback snap
                   }
                 };
               });
-            } catch (e) {
-              interpsHoles = holes1.map((h1, idx) => (v: number) => v < 0.5 ? h1 : holes2[idx]);
+            } catch {
+              interpsHoles = holes1.map((h1, idx) => {
+                const h2 = holes2[idx];
+                return (v: number) => (v < 0.5 ? h1 : h2);
+              });
             }
           }
 
           morphInterpolatorIslands = (v: number) => {
-            return interpsIslands.map((fn) => fn(v)).join(" ");
+            if (islands1.length === 0 && islands2.length === 0) return "";
+            return interpsIslands.map((fn: (t: number) => string, idx: number) => {
+              try {
+                return fn(v);
+              } catch {
+                return v < 0.5 ? islands1[idx] : islands2[idx];
+              }
+            }).join(" ");
           };
-          
+
           morphInterpolatorHoles = (v: number) => {
-            return interpsHoles.map((fn) => fn(v)).join(" ");
+            if (holes1.length === 0 && holes2.length === 0) return "";
+            return interpsHoles.map((fn: (t: number) => string, idx: number) => {
+              try {
+                return fn(v);
+              } catch {
+                return v < 0.5 ? holes1[idx] : holes2[idx];
+              }
+            }).join(" ");
           };
           
           interpolatorCache.set(cacheKey, { islands: morphInterpolatorIslands, holes: morphInterpolatorHoles });
@@ -488,7 +523,7 @@ const HenkeiInternal: React.FC<HenkeiProps> = ({
     <div className={className} style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <HenkeiContainer progress={progress} startWidth={currentStartLeft} endWidth={currentEndLeft}>
         {characters.map((item) => (
-          <HenkeiCharacter key={item.id} item={item} progress={progress} />
+          <HenkeiCharacter key={item.id} item={item} progress={progress} charId="char" />
         ))}
       </HenkeiContainer>
     </div>
@@ -515,7 +550,7 @@ const HenkeiContainer = ({ progress, startWidth, endWidth, children }: { progres
 };
 
 
-const HenkeiCharacter: React.FC<{ item: HenkeiCharItem; progress: MotionValue<number> }> = ({ item, progress }) => {
+const HenkeiCharacter: React.FC<{ item: HenkeiCharItem; progress: MotionValue<number>; charId: string }> = ({ item, progress, charId }) => {
   // Store the latest item in a ref to avoid stale closures in useTransform
   const itemRef = React.useRef(item);
   React.useLayoutEffect(() => {
@@ -528,25 +563,25 @@ const HenkeiCharacter: React.FC<{ item: HenkeiCharItem; progress: MotionValue<nu
     return `${(cur.startLeft + (cur.endLeft - cur.startLeft) * v) / 100}em`;
   });
 
-  // Interpolate the SVG Path d attribute reading from the latest ref
-  const morphPath = useTransform(progress, (v: number) => {
-    let path = "";
+  // Interpolate islands
+  const morphPathIslands = useTransform(progress, (v: number) => {
     try {
-      path += itemRef.current.morphInterpolatorIslands(v);
-    } catch (e) {
-      // ignore
+      return itemRef.current.morphInterpolatorIslands(v);
+    } catch {
+      return "";
     }
-    try {
-      const fastV = 1 - Math.pow(1 - v, 3);
-      const holesPath = itemRef.current.morphInterpolatorHoles(fastV);
-      if (holesPath) {
-        path += " " + holesPath;
-      }
-    } catch (e) {
-      // ignore
-    }
-    return path;
   });
+
+  // Interpolate holes
+  const morphPathHoles = useTransform(progress, (v: number) => {
+    try {
+      return itemRef.current.morphInterpolatorHoles(v);
+    } catch {
+      return "";
+    }
+  });
+
+  const maskId = `henkei-mask-${charId}-${item.id}`;
 
   return (
     <motion.div
@@ -558,7 +593,13 @@ const HenkeiCharacter: React.FC<{ item: HenkeiCharItem; progress: MotionValue<nu
         height: "1em",
       }}>
       <motion.svg style={{ position: 'absolute', top: 0, left: 0, overflow: 'visible', pointerEvents: 'none' }} height="1em" viewBox="0 0 100 100">
-        <motion.path d={morphPath} fill="currentColor" fillRule="evenodd" />
+        <defs>
+          <mask id={maskId}>
+            <rect width="200" height="200" x="-50" y="-50" fill="white" />
+            <motion.path d={morphPathHoles} fill="black" fillRule="nonzero" />
+          </mask>
+        </defs>
+        <motion.path d={morphPathIslands} fill="currentColor" fillRule="nonzero" mask={`url(#${maskId})`} />
       </motion.svg>
     </motion.div>
   );

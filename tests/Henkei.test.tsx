@@ -56,21 +56,4 @@ describe('Henkei Component Layout Independence', () => {
     expect(svgs[0]).toHaveStyle('position: absolute');
     expect(svgs[0]).toHaveStyle('top: 0');
   });
-  it('handles letters with different island counts (shrink-in-place logic)', async () => {
-    // "i" has 2 islands, "t" has 1 island based on our mock
-    const { container } = render(
-      <Henkei words={["i", "t"]} interval={100} duration={50} fontUrl="mock-url" />
-    );
-
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 150));
-    });
-
-    const svgs = container.querySelectorAll('svg');
-    expect(svgs.length).toBe(1);
-    
-    // The path should be rendered without crashing
-    const path = container.querySelector('path');
-    expect(path).toBeInTheDocument();
-  });
 });

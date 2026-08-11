@@ -31,9 +31,11 @@
     "clsx": "^2.1.1",
     "flubber": "^0.4.2",
     "framer-motion": "^11.0.0 || ^12.0.0 || ^13.0.0",
+    "node-fetch": "^3.3.2",
     "opentype.js": "^2.0.0",
     "paper": "^0.12.18",
     "polygon-clipping": "^0.15.7",
+    "polymorph-js": "^1.0.2",
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
