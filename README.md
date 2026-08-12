@@ -5,6 +5,8 @@
 # Henkei | へんけい
 Henkei is a React animation component for transforming words through animation. It smoothly morphs each letter into the corresponding letter of the next word
 
+![demo](./public/demo.gif)
+
 ## 📦 Installation
 
 ```bash
@@ -30,7 +32,7 @@ export default function App(){
 }
 ```
 
-If you want the word to transform into a word that has an extreme form like words in Japanese, Chinese, Korean, etc. You have to find or download a font that supports this and put it in the `fontUrl` attribute
+If you want the word to transform into a word that has an extreme form like words in Japanese, Chinese, Korean, etc. You have to find or download a font that supports this and put it in the `fontUrl` attribute. I recommend you to just download it to minimize the font not loading, you can download the font from [google font](https://fonts.google.com/) or from other sources
 
 ## 🛠️ API Reference
 
