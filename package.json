@@ -1,6 +1,6 @@
 {
   "name": "henkei",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Animate text using morphing polygons",
   "type": "module",
   "repository": "https://github.com/gilangabdian/henkei",
