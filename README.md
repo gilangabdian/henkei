@@ -10,7 +10,7 @@ Henkei is a React animation component for transforming words through animation. 
 ## 📦 Installation
 
 ```bash
-   pnpm install henkei
+   pnpm add henkei
 ```
 
 ## 🐣 Usage
