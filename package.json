@@ -1,7 +1,15 @@
 {
   "name": "henkei",
   "version": "0.1.7",
-  "description": "Animate text using morphing polygons",
+  "description": "React component for text transformation",
+  "keywords": [
+    "react",
+    "animation",
+    "henkei",
+    "morph",
+    "text-animation",
+    "text-morph"
+  ],
   "type": "module",
   "repository": "https://github.com/gilangabdian/henkei",
   "files": [
