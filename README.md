@@ -50,6 +50,7 @@ If you want the word to transform into a word that has an extreme form like word
 - [Framer Motion](https://www.framer.com/motion/) - Animation
 - [Opentype.js](https://opentype.js.org/) - Font path extraction
 - [Flubber](https://github.com/veltman/flubber) - Smooth SVG polygon morphing
+- [Polygon Clipping](https://github.com/mfogel/polygon-clipping) - Boolean operations (Union & Difference) for SVG paths
 
 
 ## 📜 License
