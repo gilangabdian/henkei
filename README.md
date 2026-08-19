@@ -3,6 +3,11 @@
 </p>
 
 # Henkei | へんけい
+<p align="left">
+<a href="https://www.npmjs.com/package/henkei" target="__blank"><img src="https://img.shields.io/npm/v/henkei?color=gray" alt="NPM version"></a>
+<a href="https://www.npmjs.com/package/henkei" target="__blank"><img alt="NPM Downloads" src="https://img.shields.io/npm/dm/henkei?color=gray"></a>
+</p>
+
 Henkei is a React animation component for transforming words through animation. It smoothly morphs each letter into the corresponding letter of the next word
 
 ![demo](./public/demo.gif)
